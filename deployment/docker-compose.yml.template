@@ -1,0 +1,23 @@
+services:
+  object-detection:
+    image: ghcr.io/getdoover/cameras-object-detection:main
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      # Findings are timestamped in site-local time to line up with the camera
+      # app's snapshot messages, which are also site-local.
+      - /etc/localtime:/etc/localtime:ro
+    # Measured on a CM4 Doovit: 128MB with both models loaded, peaking at 254MB
+    # while analysing 1080p, flat over 30 consecutive runs. So this cap is
+    # headroom, not a tight fit.
+    #
+    # It is also NOT enforced on current Doovits: cgroup v2 is mounted but the
+    # memory controller isn't enabled (`cgroup.controllers` is "cpuset cpu io
+    # pids"), so docker discards it with "Your kernel does not support memory
+    # limit capabilities". Left in deliberately -- it costs nothing, documents the
+    # expected ceiling, and starts working the day a device boots with
+    # `cgroup_enable=memory`. Don't rely on it to protect the camera apps today.
+    mem_limit: 700m
+    environment:
+      - APP_KEY=$APP_KEY
+      - HEALTHCHECK_PORT=$HEALTHCHECK_PORT

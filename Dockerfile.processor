@@ -1,0 +1,88 @@
+# syntax=docker/dockerfile:1
+#
+# Cloud processor variant -- a container-image AWS Lambda.
+#
+# Why a container image rather than the usual processor `package.zip`
+# -------------------------------------------------------------------
+# Measured for the standard processor target (x86_64, python 3.13), this app's
+# dependencies come to 288MB unzipped before the 22MB of model weights:
+#
+#     opencv (cv2 + .libs)   153 MB
+#     onnxruntime             53 MB
+#     numpy (+ .libs)         58 MB
+#     everything else         ~24 MB
+#
+# That is ~310MB against Lambda's 250MB unzipped limit for zip deployments, so
+# `package.zip` cannot carry it. Two-thirds of the weight is OpenCV, and it could be
+# dropped (Pillow for encode/decode/draw, NMS in numpy) to fit -- but only by giving up
+# fast-plate-ocr, which needs cv2, and by making the cloud code path diverge from the
+# on-device one. A container image (10GB limit) keeps both variants running the exact
+# same `common` inference code, which is worth more than the packaging tidiness.
+#
+# It also leaves headroom to swap in a heavier PPE model. That is the real prize here:
+# on-device the nano-class model scored a genuine person at 0.50 and a traffic cone at
+# 0.49 -- inseparable by threshold. A Lambda has the CPU for a `m`/`l` model at a
+# larger inference size, which is the actual fix.
+#
+# Note the standard processor `build.sh` also pins `x86_64-manylinux2014`, a tag
+# onnxruntime publishes no wheel for (it ships manylinux_2_27 / _2_28) -- another reason
+# this app can't ride that path unmodified.
+#
+# Base choice: the same python:3.11-slim-bookworm as the device image, plus AWS's
+# Runtime Interface Client, rather than public.ecr.aws/lambda/python. Both are supported
+# for container-image Lambdas, and matching the device base means `common` runs on
+# byte-identical wheels in both variants — one stack to reason about instead of Debian
+# on the device and Amazon Linux in the cloud.
+#
+# Build:  docker build -f Dockerfile.processor -t object-detection-processor .
+FROM python:3.11-slim-bookworm
+
+ENV LAMBDA_TASK_ROOT=/var/task
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+# libglib2.0-0: opencv-python-headless links it even headless.
+# g++/make: awslambdaric builds a C extension where no wheel matches.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libglib2.0-0 g++ make \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+# No uv/venv: Lambda resolves imports from LAMBDA_TASK_ROOT and a venv would need
+# PYTHONPATH gymnastics for no benefit. grpc is deliberately absent -- that's the device
+# agent's transport; a processor talks to the cloud API over HTTP.
+RUN pip install --no-cache-dir \
+        awslambdaric \
+        "pydoover>=1.2.0" \
+        "onnxruntime>=1.19.2" \
+        "opencv-python-headless>=4.10" \
+        "numpy>=1.26" \
+        "fast-plate-ocr[onnx]>=1.1.0" \
+    && pip install --no-cache-dir --no-deps . \
+    && apt-get purge -y g++ make && apt-get autoremove -y
+
+# Weights ship in the image so a cold start never waits on a download.
+COPY models/ ${LAMBDA_TASK_ROOT}/models/
+ENV OBJECT_DETECTION_MODEL_DIR=${LAMBDA_TASK_ROOT}/models
+
+# No OCR pre-cache step here, deliberately. There used to be one that warmed
+# fast-plate-ocr's hub cache, which resolves from `Path.home()` -- hardcoded, no env
+# override. Lambda sets HOME=/tmp, so a cache baked into /root/.cache was invisible at
+# runtime: the library re-downloaded on every cold start and, when it couldn't, OCR
+# degraded to detect-but-never-read. Every plate came back null in production while the
+# build looked perfectly healthy.
+#
+# The OCR weights now ship in models/ above and load by explicit path (see
+# common/detectors/anpr.py), so HOME, the network and the cache are all out of it.
+# Verified with HOME=/tmp and --network none.
+
+# One model run at a time per container, and Lambda gives ~1 vCPU per 1769MB. Letting
+# onnxruntime fan out past that just adds contention.
+ENV OMP_NUM_THREADS=2
+ENV OPENBLAS_NUM_THREADS=2
+
+# The Runtime Interface Client is the entrypoint; CMD names the handler, so it can be
+# overridden per function without rebuilding.
+ENTRYPOINT ["/usr/local/bin/python", "-m", "awslambdaric"]
+CMD ["object_detection_processor.handler"]

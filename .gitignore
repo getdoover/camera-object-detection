@@ -1,0 +1,7 @@
+.venv
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# The .onnx weights under models/ are deliberately committed -- the image build and
+# offline devices depend on them being in the repo. Don't add models/ here.

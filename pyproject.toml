@@ -1,0 +1,51 @@
+[project]
+name = "object_detection"
+version = "0.1.0"
+description = "PPE (hard hat / high-vis), number-plate and rule-driven general object detection for doover camera snapshots"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # The [grpc] extra is NOT optional here. pydoover imports grpc at module load to
+    # talk to the device agent, and the camera app only gets away without it because
+    # the old doover base image provided grpcio as a system package and its venv is
+    # built with --system-site-packages. This image has no such base, so declaring it
+    # is the difference between the app running and it dying on the first import.
+    "pydoover[grpc]>=1.2.0",
+    # onnxruntime is the whole inference stack -- deliberately NOT ultralytics,
+    # which drags in torch (~2GB, and no aarch64 musl/slim wheel that fits a
+    # Doovit's ~1.8GB RAM). Pre/post-processing is done by hand in yolo.py.
+    "onnxruntime>=1.19.2",
+    "opencv-python-headless>=4.10",
+    "numpy>=1.26",
+    # ONNX plate OCR. Pure onnxruntime, no torch.
+    "fast-plate-ocr[onnx]>=1.1.0",
+]
+
+[project.scripts]
+doover-app-run = "object_detection:main"
+export-config = "object_detection.app_config:export"
+export-config-processor = "object_detection_processor.app_config:export"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/common",
+    "src/object_detection",
+    "src/object_detection_processor",
+]
+
+[dependency-groups]
+dev = [
+    # grpcio/protobuf are deliberately NOT listed here -- they come from the
+    # pydoover[grpc] runtime extra, which pins them. Re-adding a floating version
+    # makes the lock unsatisfiable.
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+    "requests>=2.32.3",
+    # Only needed by scripts/fetch_models.py to export the PPE .pt to ONNX on a
+    # dev machine. Never installed into the device image.
+    "ultralytics>=8.3.0",
+]

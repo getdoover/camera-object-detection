@@ -1,0 +1,22 @@
+{
+    "camera_apps": [
+        "doover_camera_1"
+    ],
+    "ppe_detection": {
+        "enabled": true,
+        "require_hard_hat": true,
+        "require_highvis": true,
+        "minimum_confidence": 55,
+        "notify_on_violation": true
+    },
+    "number_plate_recognition": {
+        "enabled": true,
+        "minimum_confidence": 40,
+        "minimum_plate_characters": 4,
+        "notify_on_plate_read": false
+    },
+    "analyse_snapshots_because_of": [],
+    "annotate_images": true,
+    "publish_results_with_no_findings": true,
+    "inference_size": 640
+}
