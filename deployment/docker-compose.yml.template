@@ -1,6 +1,6 @@
 services:
   object-detection:
-    image: ghcr.io/getdoover/cameras-object-detection:main
+    image: registry.doover.com/apps/object_detection:main
     restart: unless-stopped
     network_mode: host
     volumes:
