@@ -141,8 +141,7 @@ def report(detectors: list[Detector], analyses: list[Analysis], camera: str) -> 
                 notifications.append(
                     Notification(
                         f"{alert.text}{zone_suffix(matched)}.",
-                        alert.severity,
-                        alert.topic,
+                        alert.event,
                     )
                 )
 

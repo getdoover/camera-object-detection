@@ -21,7 +21,6 @@ import logging
 
 from ..yolo import MODEL_DIR, Detection, ModelUnavailable, YoloOnnx
 from .base import (
-    SEVERITY_WARN,
     STYLE_BAD,
     STYLE_OK,
     Alert,
@@ -271,8 +270,7 @@ class PPEDetector:
         return [
             Alert(
                 f"{camera} detected {who} without {_pretty_missing(violators, ' and ')}",
-                SEVERITY_WARN,
-                topic="ppe_event",
+                event="ppe_violation",
                 default_notify=self.config.notify_on_violation.value,
             )
         ]

@@ -21,14 +21,13 @@ from datetime import datetime, timezone
 from common import annotate as annotate_mod
 from common import detectors as detectors_mod
 from common import pipeline
-from common.detectors.base import SEVERITY_WARN
+from object_detection_shared.notifications import ObjectDetectionNotifications
 from object_detection_shared.tags import ObjectDetectionTags, update_running_tags
 from pydoover.docker import Application
 from pydoover.models import (
     EventSubscription,
     File,
     MessageCreateEvent,
-    NotificationSeverity,
 )
 
 from .app_config import ObjectDetectionConfig
@@ -73,6 +72,7 @@ class ObjectDetectionApplication(Application):
 
     config_cls = ObjectDetectionConfig
     tags_cls = ObjectDetectionTags
+    notifications_cls = ObjectDetectionNotifications
 
     async def setup(self):
         self.detectors = detectors_mod.load_enabled(self.config)
@@ -349,15 +349,8 @@ class ObjectDetectionApplication(Application):
 
         await self._publish_events(app_key, report.events)
         for notification in report.notifications:
-            await self.send_notification(
-                notification.text,
-                severity=(
-                    NotificationSeverity.Warn
-                    if notification.severity == SEVERITY_WARN
-                    else NotificationSeverity.Info
-                ),
-                topic=notification.topic,
-            )
+            # The declaration supplies the topic and severity; only the text varies.
+            await self.notifications[notification.event].send(notification.text)
 
     @staticmethod
     def _annotated_filename(filename: str) -> str:

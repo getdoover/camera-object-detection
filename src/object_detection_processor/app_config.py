@@ -13,8 +13,7 @@ class ObjectDetectionProcessorConfig(DetectionConfig):
     # First in the form, for the same reason as the device app's Camera App.
     channel = SubscriptionConfig(
         "Camera Channel",
-        description="The camera's snapshot channel: its app key, e.g. "
-        "'doover_camera_1'. Install this app once per camera.",
+        description="The camera's snapshot channel: its app key, e.g. 'doover_camera_1'.",
         default="doover_camera_1",
         position=-1,
     )

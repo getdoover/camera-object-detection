@@ -54,7 +54,7 @@ COPY src/ ./src/
 # agent's transport; a processor talks to the cloud API over HTTP.
 RUN pip install --no-cache-dir \
         awslambdaric \
-        "pydoover>=1.2.0" \
+        "pydoover>=1.17.2" \
         "onnxruntime>=1.19.2" \
         "opencv-python-headless>=4.10" \
         "numpy>=1.26" \

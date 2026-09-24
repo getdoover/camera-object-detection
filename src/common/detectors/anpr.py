@@ -13,7 +13,7 @@ import logging
 import re
 
 from ..yolo import MODEL_DIR, Detection, ModelUnavailable, YoloOnnx
-from .base import SEVERITY_INFO, STYLE_PLATE, Alert, Annotation, confidence_stats
+from .base import STYLE_PLATE, Alert, Annotation, confidence_stats
 
 log = logging.getLogger(__name__)
 
@@ -190,8 +190,7 @@ class ANPRDetector:
         return [
             Alert(
                 f"{camera} read plate(s) {', '.join(p.text for p in plates)}",
-                SEVERITY_INFO,
-                topic="anpr_event",
+                event="plate_read",
                 default_notify=self.config.notify_on_plate.value,
             )
         ]

@@ -1453,7 +1453,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "onnxruntime", specifier = ">=1.19.2" },
     { name = "opencv-python-headless", specifier = ">=4.10" },
-    { name = "pydoover", extras = ["grpc"], specifier = ">=1.2.0" },
+    { name = "pydoover", extras = ["grpc"], specifier = ">=1.17.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1828,15 +1828,15 @@ wheels = [
 
 [[package]]
 name = "pydoover"
-version = "1.12.0"
+version = "1.17.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "httpx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/20/6a/6250ccb49522966c7024f7cfdda6268941ca8eeeaa32c7ecb3e983e5fd1a/pydoover-1.12.0.tar.gz", hash = "sha256:ef3c4f89ad81ed46f457a0fc72052e1da609246977745f7530bd9ae653dc1771", size = 563024, upload-time = "2026-07-31T02:23:39.204Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/a2/d131a5ae765d871a3043a4d1696676715e6c99b88382abacf357780f812c/pydoover-1.17.2.tar.gz", hash = "sha256:3179a09e04396edd6644de0d0b12ebfa22cbabc55c5ea3651fa90ac9218357c4", size = 615685, upload-time = "2026-09-22T07:01:18.952Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/c4/d70ae64e37d5ff8d68d9a833ec8771ffc30946174e453286b537ee418add/pydoover-1.12.0-py3-none-any.whl", hash = "sha256:d0b82371c7ad11b247aa278b3198ea7ea2bec4dc3b6886221ab33867acc6928f", size = 299364, upload-time = "2026-07-31T02:23:37.73Z" },
+    { url = "https://files.pythonhosted.org/packages/84/31/df8c484ee3717e287388c5514fcd06fc582288b4d85d01a9f3f6410dd82b/pydoover-1.17.2-py3-none-any.whl", hash = "sha256:a2634fca08912aced28d96d2e6dc7a5c75bf0f5a5a3044277a32fc34e653ca15", size = 334589, upload-time = "2026-09-22T07:01:17.713Z" },
 ]
 
 [package.optional-dependencies]

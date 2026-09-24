@@ -187,6 +187,23 @@ The same channel the camera app uses, so automations hook off findings the same 
  "timestamp": "…", "rule": "Cattle in laneway", "count": 3, "objects": ["cow"]}
 ```
 
+### Notifications
+
+Declared in `object_detection_shared/notifications.py`, so each has its own topic
+(`dev/applications/default/<app_key>/<event>`) and an operator can turn one off without
+losing the others:
+
+| Notification | Severity | Sent when |
+|---|---|---|
+| `ppe_violation` | Warn | someone is missing required PPE |
+| `plate_read` | Info | a plate is read |
+| `object_rule` | Info | an object rule triggers — the message names the rule |
+
+Object rules share one notification because rules are per-install config, and the
+schema is exported from the code at publish time. Whether each is sent at all is still
+the config switch (**Notify On Violation**, **Notify On Plate Read**, a rule's
+**Notify**), overridden either way by a matching zone's `notify`.
+
 ### To tag history
 
 Every analysis writes these tags **and logs them to history** — zeros and repeats

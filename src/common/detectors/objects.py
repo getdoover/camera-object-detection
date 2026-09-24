@@ -19,7 +19,6 @@ import re
 
 from ..yolo import MODEL_DIR, Detection, ModelUnavailable, YoloOnnx
 from .base import (
-    SEVERITY_INFO,
     STYLE_OBJECT,
     Alert,
     Annotation,
@@ -244,8 +243,7 @@ class ObjectsDetector:
         return [
             Alert(
                 f"{rule.name}: {camera} saw {describe_labels(matched)}",
-                SEVERITY_INFO,
-                topic="object_event",
+                event="object_rule",
                 default_notify=rule.notify,
                 # This rule's own detections decide which zones get a say.
                 items=matched,

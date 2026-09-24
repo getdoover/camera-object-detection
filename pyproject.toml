@@ -10,7 +10,7 @@ dependencies = [
     # the old doover base image provided grpcio as a system package and its venv is
     # built with --system-site-packages. This image has no such base, so declaring it
     # is the difference between the app running and it dying on the first import.
-    "pydoover[grpc]>=1.2.0",
+    "pydoover[grpc]>=1.17.2",
     # onnxruntime is the whole inference stack -- deliberately NOT ultralytics,
     # which drags in torch (~2GB, and no aarch64 musl/slim wheel that fits a
     # Doovit's ~1.8GB RAM). Pre/post-processing is done by hand in yolo.py.
@@ -25,6 +25,8 @@ dependencies = [
 doover-app-run = "object_detection:main"
 export-config = "object_detection.app_config:export"
 export-config-processor = "object_detection_processor.app_config:export"
+export-notifications = "object_detection_shared.notifications:export"
+export-notifications-processor = "object_detection_shared.notifications:export_processor"
 
 [build-system]
 requires = ["hatchling"]

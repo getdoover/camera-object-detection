@@ -38,6 +38,7 @@
             "Code": {
                 "ImageUri": "184499164237.dkr.ecr.ap-southeast-2.amazonaws.com/doover/object-detection-processor:main"
             }
-        }
+        },
+        "export_notification_command": "export-notifications-processor"
     }
 }

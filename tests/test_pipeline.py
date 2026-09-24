@@ -185,8 +185,7 @@ class TestNotifications:
         assert [n.text for n in report.notifications] == [
             "Gate cam detected someone without hard hat."
         ]
-        assert report.notifications[0].severity == "warn"
-        assert report.notifications[0].topic == "ppe_event"
+        assert report.notifications[0].event == "ppe_violation"
 
     def test_switch_off_is_quiet(self):
         _, report = run([ppe([violator(LEFT_BOX)], notify=False)])
@@ -213,7 +212,7 @@ class TestNotifications:
         _, report = run(
             [ppe([violator(LEFT_BOX)], notify=True), anpr([plate("ABC")])], zones
         )
-        assert [n.topic for n in report.notifications] == ["anpr_event"]
+        assert [n.event for n in report.notifications] == ["plate_read"]
 
 
 class TestEvents:

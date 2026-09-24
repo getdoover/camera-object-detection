@@ -7,12 +7,14 @@ A detector is two halves, and the split is what zones need:
   drawn), and names the subset worth reporting (``reportable``): PPE violators, plates
   that were actually read, objects a rule is interested in.
 * **Reporting** — the detector turns reportable items into a summary, ``camera_event``
-  payloads and notifications. These take items *after* the zone filter has run, which is
+  payloads, notifications and tag-history metrics. These take items *after* the zone filter has run, which is
   why they live on the detector rather than the result: the shells (via
   ``common.pipeline``) sit between the two halves and narrow the list.
 
-Nothing here imports doover. Severities are plain strings and events are plain dicts, so
-the device app and the Lambda processor can each map them onto their own platform calls.
+Nothing here imports doover. Events are plain dicts, and an alert names the declared
+notification it's for (``object_detection_shared.notifications``) rather than carrying a
+topic or severity, so the device app and the Lambda processor each send it through their
+own platform calls.
 """
 
 from collections import Counter
@@ -24,9 +26,6 @@ STYLE_BAD = "bad"
 STYLE_OK = "ok"
 STYLE_PLATE = "plate"
 STYLE_OBJECT = "object"
-
-SEVERITY_INFO = "info"
-SEVERITY_WARN = "warn"
 
 
 @dataclass
@@ -41,7 +40,8 @@ class Alert:
     """A notification a detector would like sent, before zones have had their say.
 
     ``text`` has no trailing full stop: the pipeline appends " in <zone>" when one zone is
-    responsible. ``default_notify`` is this detector's own config switch, which a matching
+    responsible. ``event`` is the name of the declared notification to send it as, which
+    sets its topic and severity. ``default_notify`` is this detector's own config switch, which a matching
     zone overrides in either direction (see ``zones.should_notify``).
 
     ``items`` narrows which findings' zones decide this alert. None means all of the
@@ -51,8 +51,7 @@ class Alert:
     """
 
     text: str
-    severity: str
-    topic: str
+    event: str
     default_notify: bool
     items: list | None = None
 
@@ -62,8 +61,7 @@ class Notification:
     """An alert that survived the zone check, ready to send."""
 
     text: str
-    severity: str
-    topic: str
+    event: str
 
 
 class Result(Protocol):

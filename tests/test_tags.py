@@ -354,3 +354,62 @@ class TestConfigShape:
         } <= shared
         for key in ("ppe_detection", "number_plate_recognition", "object_detection"):
             assert device[key] == cloud[key]
+
+
+class TestNotifications:
+    """Alerts name a declared notification; the declaration sets topic and severity."""
+
+    def test_every_alert_event_is_declared(self):
+        from object_detection_shared.notifications import ObjectDetectionNotifications
+
+        declared = set(ObjectDetectionNotifications().to_schema())
+        events = {"ppe_violation", "plate_read", "object_rule"}
+        assert events <= declared
+        # And the detectors really do use those names.
+        real_ppe = PPEDetector.__new__(PPEDetector)
+        real_ppe.config = SimpleNamespace(notify_on_violation=v(True))
+        real_anpr = ANPRDetector.__new__(ANPRDetector)
+        real_anpr.config = SimpleNamespace(notify_on_plate=v(True))
+        real_obj = ObjectsDetector.__new__(ObjectsDetector)
+        real_obj.rules = [Rule("Cattle", ["cow"], notify=True)]
+        alerted = {
+            *(
+                a.event
+                for a in real_ppe.alerts("cam", [person(LEFT, 0.9, ["hard_hat"])])
+            ),
+            *(
+                a.event
+                for a in real_anpr.alerts(
+                    "cam", [Plate(Detection("plate", 0.9, LEFT), "ABC")]
+                )
+            ),
+            *(a.event for a in real_obj.alerts("cam", [Detection("cow", 0.9, LEFT)])),
+        }
+        assert alerted == events
+
+    @pytest.mark.parametrize(
+        "event, severity",
+        [("ppe_violation", "Warn"), ("plate_read", "Info"), ("object_rule", "Info")],
+    )
+    def test_topic_and_severity(self, event, severity):
+        """The topic is a contract with the API and the subscription editor."""
+        from object_detection_shared.notifications import ObjectDetectionNotifications
+        from pydoover.models import NotificationSeverity
+
+        sent = []
+
+        class App:
+            async def send_notification(self, message, **kwargs):
+                sent.append((message, kwargs))
+
+        bound = ObjectDetectionNotifications("object_detection_1", App())
+        asyncio.run(bound[event].send("Yard cam saw something."))
+
+        ((message, kwargs),) = sent
+        assert message == "Yard cam saw something."
+        assert str(kwargs["topic"]) == (
+            f"dev/applications/default/object_detection_1/{event}"
+        )
+        assert kwargs["severity"] is getattr(NotificationSeverity, severity)
+        # No title: the server substitutes the agent's display name.
+        assert kwargs["title"] is None
