@@ -1,0 +1,23 @@
+name: Doover App
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  app:
+    uses: getdoover/workflows/.github/workflows/app.yml@main
+    with:
+      # The default test container is spaneng/doover_device_base, which is
+      # Alpine/musl. onnxruntime and opencv publish no musllinux wheels, so
+      # `uv sync` there fails to resolve before a single test runs. This is the
+      # same reason the app's Dockerfile is built on python:3.11-slim-bookworm
+      # rather than the device base -- test on the platform we actually ship.
+      test-image: python:3.11-bookworm
+    secrets: inherit
