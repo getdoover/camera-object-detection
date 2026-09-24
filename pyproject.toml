@@ -33,6 +33,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = [
     "src/common",
+    "src/object_detection_shared",
     "src/object_detection",
     "src/object_detection_processor",
 ]

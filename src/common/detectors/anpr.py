@@ -13,7 +13,7 @@ import logging
 import re
 
 from ..yolo import MODEL_DIR, Detection, ModelUnavailable, YoloOnnx
-from .base import SEVERITY_INFO, STYLE_PLATE, Alert, Annotation
+from .base import SEVERITY_INFO, STYLE_PLATE, Alert, Annotation, confidence_stats
 
 log = logging.getLogger(__name__)
 
@@ -170,6 +170,19 @@ class ANPRDetector:
             {"kind": "anpr", "plate": p.text, "confidence": p.detection.confidence}
             for p in plates
         ]
+
+    def metrics(self, results: list[ANPRResult], plates: list[Plate]) -> dict:
+        """Plates seen (read or not), and plates read after zones.
+
+        Confidence is the plate *detector's*, over every plate seen — the OCR's own
+        confidence is per read and published with it in the findings.
+        """
+        seen = [p for r in results for p in r.plates]
+        return {
+            "anpr_plates": len(seen),
+            "anpr_plates_read": len(plates),
+            **confidence_stats("anpr", seen),
+        }
 
     def alerts(self, camera: str, plates: list[Plate]) -> list[Alert]:
         if not plates:

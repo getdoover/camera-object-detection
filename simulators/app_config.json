@@ -1,7 +1,5 @@
 {
-    "camera_apps": [
-        "doover_camera_1"
-    ],
+    "camera_app": "doover_camera_1",
     "ppe_detection": {
         "enabled": true,
         "require_hard_hat": true,

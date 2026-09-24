@@ -103,6 +103,14 @@ class Detector(Protocol):
 
     def alerts(self, camera: str, items: list) -> list[Alert]: ...
 
+    def metrics(self, results: list, items: list) -> dict:
+        """Numbers for tag history, prefixed with the detector's name.
+
+        ``results`` are every frame's results for this detector (unfiltered: what was
+        *seen*); ``items`` are the reportable items that survived the zones. Recorded on
+        every analysis, zeros included — "nothing here" is a data point too.
+        """
+
 
 # Snapshot reasons that carry the camera's own classification of what it saw. Only these
 # can rule a detector out; any other reason (schedule, manual, intruder) says nothing
@@ -126,3 +134,24 @@ def describe_labels(items: list[Any]) -> str:
     counts = Counter(item.label for item in items)
     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     return ", ".join(f"{n} x {label}" for label, n in ordered)
+
+
+def confidence_stats(prefix: str, items: list) -> dict:
+    """``<prefix>_max_confidence`` / ``<prefix>_mean_confidence``, 0-1.
+
+    0 when nothing was seen, rather than unset: a tag set to None is cleared, and a
+    history with holes in it can't be told apart from an app that stopped reporting.
+    """
+    values = [_confidence_of(item) for item in items]
+    values = [v for v in values if v is not None]
+    if not values:
+        return {f"{prefix}_max_confidence": 0, f"{prefix}_mean_confidence": 0}
+    return {
+        f"{prefix}_max_confidence": round(max(values), 3),
+        f"{prefix}_mean_confidence": round(sum(values) / len(values), 3),
+    }
+
+
+def _confidence_of(item):
+    detection = getattr(item, "detection", item)
+    return getattr(detection, "confidence", None)

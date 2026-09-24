@@ -11,7 +11,6 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
 from common import pipeline
 from common.detectors.objects import (
     COCO_CLASSES,
@@ -20,6 +19,7 @@ from common.detectors.objects import (
     Rule,
 )
 from common.yolo import Detection
+
 from object_detection.app_config import ObjectDetectionConfig
 from object_detection_processor.app_config import ObjectDetectionProcessorConfig
 
@@ -201,8 +201,8 @@ def existing_install(schema) -> dict:
         (Path(__file__).parents[1] / "simulators" / "app_config.json").read_text()
     )
     if schema is ObjectDetectionProcessorConfig:
-        data.pop("camera_apps")
-        data["dv_proc_subscriptions"] = ["doover_camera_1"]
+        data.pop("camera_app")
+        data["dv_proc_subscriptions"] = "doover_camera_1"
     return data
 
 

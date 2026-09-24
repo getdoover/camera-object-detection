@@ -5,7 +5,7 @@
         "type": "DEV",
         "visibility": "PUB",
         "allow_many": true,
-        "description": "On-device PPE (hard hat / high-vis) and number-plate detection for camera snapshots.",
+        "description": "On-device PPE, number-plate and rule-driven object detection for one camera's snapshots.",
         "long_description": "README.md",
         "depends_on": [
             "platform_interface"
@@ -20,8 +20,8 @@
         "display_name": "Object Detection (Cloud)",
         "type": "PRO",
         "visibility": "PUB",
-        "allow_many": false,
-        "description": "Cloud processor that runs PPE and number-plate inference on camera snapshots and edits the snapshot message in place with the result.",
+        "allow_many": true,
+        "description": "Cloud processor that runs PPE, number-plate and rule-driven object detection on one camera's snapshots and edits each snapshot message in place with the result.",
         "long_description": "README.md",
         "depends_on": [],
         "organisation_id": null,

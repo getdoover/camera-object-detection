@@ -15,9 +15,17 @@ Weights: Ultralytics YOLO11n trained on COCO, exported to ONNX by
 """
 
 import logging
+import re
 
 from ..yolo import MODEL_DIR, Detection, ModelUnavailable, YoloOnnx
-from .base import SEVERITY_INFO, STYLE_OBJECT, Alert, Annotation, describe_labels
+from .base import (
+    SEVERITY_INFO,
+    STYLE_OBJECT,
+    Alert,
+    Annotation,
+    confidence_stats,
+    describe_labels,
+)
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +66,9 @@ class Rule:
         self.min_count = max(1, int(min_count))
         self.confidence = confidence / 100
         self.notify = notify
+        # The tag this rule's count is recorded under. Assigned by `rules_from_config`,
+        # which is the one place that can make it unique across rules.
+        self.tag_name = f"rule_{_slug(name)}"
 
     @classmethod
     def from_config(cls, element) -> "Rule":
@@ -84,6 +95,37 @@ class Rule:
         """The detections that trigger this rule, or [] if there aren't enough."""
         matched = self.matching(detections)
         return matched if len(matched) >= self.min_count else []
+
+
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "unnamed"
+
+
+def rules_from_config(config) -> list[Rule]:
+    """The usable rules in an objects config section, with unique tag names.
+
+    Shared by the detector and the tag declarations, so the tags an install declares are
+    always exactly the ones the detector writes. A rule that names no objects can never
+    match anything, so it's dropped (loudly) rather than declared as a tag that's
+    always 0.
+    """
+    rules = []
+    for element in config.rules.elements:
+        rule = Rule.from_config(element)
+        if not rule.classes:
+            log.warning(f"Ignoring rule '{rule.name}': it names no objects.")
+            continue
+        rules.append(rule)
+
+    # Two rules can slug to the same name ("Cows!" and "cows"); number the repeats so
+    # neither overwrites the other's history.
+    seen: dict[str, int] = {}
+    for rule in rules:
+        n = seen.get(rule.tag_name, 0) + 1
+        seen[rule.tag_name] = n
+        if n > 1:
+            rule.tag_name = f"{rule.tag_name}_{n}"
+    return rules
 
 
 class ObjectsResult:
@@ -117,8 +159,7 @@ class ObjectsDetector:
     camera_reasons = None
 
     def __init__(self, config, model_path=OBJECTS_MODEL_PATH):
-        self.rules = [Rule.from_config(e) for e in config.rules.elements]
-        self.rules = [r for r in self.rules if self._usable(r)]
+        self.rules = rules_from_config(config)
         self.model = YoloOnnx(model_path)
 
         available = set(self.model.class_names.values())
@@ -140,13 +181,6 @@ class ObjectsDetector:
                 "Object detection is enabled but has no rules with any objects in them, "
                 "so it will never report anything."
             )
-
-    @staticmethod
-    def _usable(rule: Rule) -> bool:
-        if rule.classes:
-            return True
-        log.warning(f"Ignoring rule '{rule.name}': it names no objects.")
-        return False
 
     def analyse(self, image, size: int) -> ObjectsResult:
         """Run the model once and keep what any rule wants. CPU-bound; use a thread."""
@@ -192,6 +226,19 @@ class ObjectsDetector:
             }
             for rule, matched in self.triggered(detections)
         ]
+
+    def metrics(self, results: list[ObjectsResult], detections: list) -> dict:
+        """Numbers for tag history: what was seen, and each rule's count after zones.
+
+        A rule's count is recorded whether or not it reached its minimum, so the history
+        shows "2 cows" on the way to a rule that wants 3.
+        """
+        seen = [d for r in results for d in r.detections]
+        return {
+            "objects_count": len(seen),
+            **confidence_stats("objects", seen),
+            **{rule.tag_name: len(rule.matching(detections)) for rule in self.rules},
+        }
 
     def alerts(self, camera: str, detections: list[Detection]) -> list[Alert]:
         return [

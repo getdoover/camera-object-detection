@@ -1,14 +1,14 @@
 """Object detection over the camera apps' published snapshots.
 
-The app is entirely event-driven: it subscribes to each configured camera app's
-channel, and every time that camera publishes a snapshot message it fetches the
+One install per camera. The app is entirely event-driven: it subscribes to its camera
+app's channel, and every time that camera publishes a snapshot message it fetches the
 attached image, runs the enabled detectors, and **edits that message in place** with
 the findings and an annotated copy — so a frame and its analysis are one timeline entry
-rather than two a reader has to pair up.
+rather than two a reader has to pair up. Each analysis is also recorded to tag history
+(see ``object_detection_shared.tags``).
 
-Running here rather than in the camera app is deliberate: the models are shared, so
-one instance can serve every camera on a Doovit and load one copy of each model,
-which matters on a device with well under a gigabyte of RAM to spare.
+Each install loads its own copy of the models it has enabled, so on a Doovit with well
+under a gigabyte to spare, enable only what each camera needs — see the README.
 
 The inference itself lives in ``common``, shared verbatim with the cloud processor
 variant (``object_detection_processor``) so the two can't drift apart.
@@ -22,6 +22,7 @@ from common import annotate as annotate_mod
 from common import detectors as detectors_mod
 from common import pipeline
 from common.detectors.base import SEVERITY_WARN
+from object_detection_shared.tags import ObjectDetectionTags, update_running_tags
 from pydoover.docker import Application
 from pydoover.models import (
     EventSubscription,
@@ -31,7 +32,6 @@ from pydoover.models import (
 )
 
 from .app_config import ObjectDetectionConfig
-from .app_tags import ObjectDetectionTags
 
 log = logging.getLogger()
 
@@ -84,25 +84,25 @@ class ObjectDetectionApplication(Application):
                 "snapshots will be ignored."
             )
 
-        # One model run at a time. Concurrent runs on a 4-core CM4 shared with the
-        # camera apps would multiply peak RAM by the number of cameras that happened
-        # to snapshot together, which is exactly when they all fire (the schedule).
+        # One model run at a time, so a PTZ camera's several views, or snapshots that
+        # arrive back to back, queue rather than multiply peak RAM on a 4-core CM4
+        # shared with the camera apps.
         self._inference_lock = asyncio.Lock()
 
-        keys = self.config.watched_app_keys
-        if not keys:
-            log.warning("No camera apps configured; nothing to subscribe to.")
-        for key in keys:
-            log.info(f"Subscribing to snapshots from '{key}'.")
-            self.device_agent.add_event_callback(
-                key, self.on_camera_message, EventSubscription.message_create
-            )
+        key = self.config.camera_app_key
+        if not key:
+            log.warning("No camera app configured; nothing to subscribe to.")
+            return
+        log.info(f"Subscribing to snapshots from '{key}'.")
+        self.device_agent.add_event_callback(
+            key, self.on_camera_message, EventSubscription.message_create
+        )
 
     async def main_loop(self):
         # Everything happens in the subscription callbacks; the loop only exists to
         # surface that the app is alive and what it has done.
         log.info(
-            f"Watching {len(self.config.watched_app_keys)} camera app(s). "
+            f"Watching '{self.config.camera_app_key}'. "
             f"Analysed {self.tags.analysed_count.value} snapshot(s), "
             f"{self.tags.violation_count.value} PPE violation(s)."
         )
@@ -272,6 +272,7 @@ class ObjectDetectionApplication(Application):
         )
 
         await self.tags.analysed_count.set(self.tags.analysed_count.value + 1)
+        await self._record_metrics(report.metrics)
 
         if not analysis.found_anything and not self.config.publish_clean_results.value:
             log.info(f"Nothing detected in '{attachment.filename}'.")
@@ -365,6 +366,22 @@ class ObjectDetectionApplication(Application):
             return f"{filename}{ANNOTATED_SUFFIX}.jpg"
         return f"{stem}{ANNOTATED_SUFFIX}.jpg"
 
+    async def _record_metrics(self, metrics: dict):
+        """Write this analysis's figures to tags, logged to history.
+
+        Goes to the tag manager directly rather than through each bound tag, because
+        a bound tag's set skips a value that hasn't changed — and "still 2 people"
+        is a data point this history exists to hold. `last_analysed_at` goes with them
+        so every point in the history is tied to an analysis.
+        """
+        values = {
+            "last_analysed_at": int(datetime.now(tz=timezone.utc).timestamp() * 1000),
+            **metrics,
+        }
+        await self.tag_manager.set_tags(
+            {self.app_key: values}, only_if_changed=False, log=True
+        )
+
     async def _publish_events(self, app_key, events):
         """Publish structured events for automations, mirroring `camera_event`."""
         now = datetime.now(tz=timezone.utc).isoformat()
@@ -378,19 +395,7 @@ class ObjectDetectionApplication(Application):
                 **{k: v for k, v in event.items() if k != "kind"},
             )
 
-            # The tags predate generic detection and dashboards read them, so they keep
-            # tracking PPE and plates specifically.
-            if kind == "anpr":
-                await self.tags.last_plate.set(event["plate"])
-            elif kind == "ppe_violation":
-                await self.tags.violation_count.set(self.tags.violation_count.value + 1)
-                # Epoch milliseconds, matching the camera app's tag of the same name.
-                # Its naive `datetime.now()` yields the same epoch value as this, since
-                # `timestamp()` reads a naive datetime as local time -- being explicit
-                # about the zone just removes the ambiguity for the reader.
-                await self.tags.last_ppe_violation.set(
-                    int(datetime.now(tz=timezone.utc).timestamp() * 1000)
-                )
+        await update_running_tags(self.tags, events)
 
     async def _publish_camera_event(self, kind: str, app_key: str, **extra):
         payload = {

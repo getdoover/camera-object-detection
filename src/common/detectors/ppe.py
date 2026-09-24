@@ -20,7 +20,14 @@ Two things make that non-trivial:
 import logging
 
 from ..yolo import MODEL_DIR, Detection, ModelUnavailable, YoloOnnx
-from .base import SEVERITY_WARN, STYLE_BAD, STYLE_OK, Alert, Annotation
+from .base import (
+    SEVERITY_WARN,
+    STYLE_BAD,
+    STYLE_OK,
+    Alert,
+    Annotation,
+    confidence_stats,
+)
 
 log = logging.getLogger(__name__)
 
@@ -247,6 +254,15 @@ class PPEDetector:
                 "missing": sorted({m for v in violators for m in v.missing}),
             }
         ]
+
+    def metrics(self, results: list[PPEResult], violators: list[Person]) -> dict:
+        """People seen, and violations after zones. Confidence is of the people."""
+        people = [p for r in results for p in r.people]
+        return {
+            "ppe_people": len(people),
+            "ppe_violations": len(violators),
+            **confidence_stats("ppe", people),
+        }
 
     def alerts(self, camera: str, violators: list[Person]) -> list[Alert]:
         if not violators:

@@ -12,7 +12,7 @@ detection for camera snapshots, on-device or in the cloud**
 | | `object_detection` (DEV) | `object_detection_processor` (PRO) |
 |---|---|---|
 | Runs on | the Doovit | AWS Lambda |
-| Triggered by | subscribing to camera channels | invoked by the platform |
+| Triggered by | subscribing to its camera app's channel | invoked by the platform, via a subscription to that channel |
 | Gets the image | waits ~1s, re-reads the message (see below) | attachment URL, works immediately |
 | Result | edits the snapshot message in place | edits the snapshot message in place |
 | Inference size | 640 | 640 — bigger is *not* better, see below |
@@ -45,13 +45,18 @@ licence — see [Models](#models).
 
 ## Overview
 
-This app watches the camera apps on a Doovit. Every time a camera publishes a
-snapshot, it fetches the image, runs the enabled detectors over it, and publishes the
-result **back to that camera's own channel** — so the finding lands in the camera's
-timeline next to the picture it came from, with an annotated copy attached.
+**Install it once per camera.** Every time that camera publishes a snapshot, the app
+fetches the image, runs the enabled detectors over it, and publishes the result **back
+to the camera's own channel** — so the finding lands in the camera's timeline next to the
+picture it came from, with an annotated copy attached — and records the figures to [tag
+history](#tag-history).
 
-Everything runs on the device. There is no cloud inference and no API key: the models
-are ONNX files baked into the image, executed by onnxruntime on the CPU.
+One install per camera is what lets each camera have its own detectors, thresholds and
+rules: the gate camera reads plates, the yard camera checks PPE and counts cattle.
+
+The models are ONNX files baked into the image, executed by onnxruntime on the CPU;
+there is no API key. On the device variant that CPU is the Doovit's, so see
+[Performance](#performance) for what several installs on one device cost.
 
 <br/>
 
@@ -59,7 +64,7 @@ are ONNX files baked into the image, executed by onnxruntime on the CPU.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| **Camera Apps** | App keys of the camera apps to watch, e.g. `doover_camera_1` | `Required` |
+| **Camera App** (device) / **Camera Channel** (cloud) | The camera to analyse — its app key | `doover_camera_1` |
 | **PPE › Enabled** | Run hard-hat / high-vis detection | `false` |
 | **PPE › Require Hard Hat** | Flag a person not wearing a hard hat | `true` |
 | **PPE › Require High-Vis** | Flag a person not wearing a high-vis vest | `true` |
@@ -70,12 +75,17 @@ are ONNX files baked into the image, executed by onnxruntime on the CPU.
 | **ANPR › Minimum Plate Characters** | Discard OCR reads shorter than this | `4` |
 | **ANPR › Notify On Plate Read** | Notify on every plate read | `false` |
 | **Object Detection › Enabled** | Run the general-purpose COCO model | `false` |
-| **Object Detection › Rules** | What to look for — see [General object detection](#general-object-detection) | *(none)* |
+| **Object Detection › Rules** | What to look for, each with its own **Minimum Confidence** (default `50`) — see [General object detection](#general-object-detection) | *(none)* |
 | **Analyse Snapshots Because Of** | Only analyse snapshots with these `reason`s. Empty = everything | *(all)* |
 
 | **Annotate Images** | Draw labelled boxes and publish the annotated frame | `true` |
 | **Publish Results With No Findings** | Publish even when nothing was detected | `false` |
 | **Inference Size** | Square size (px) frames are letterboxed to | `640` |
+| **Match Detectors To Event** (cloud only) | Skip PPE on vehicle events and plates on person events | `true` |
+
+Every **Minimum Confidence** is shown by default rather than tucked under advanced
+settings: it's the setting most worth tuning per camera. Read [why PPE defaults to
+55](#false-positives-and-why-the-default-confidence-is-55) before lowering it.
 
 ### The camera app can opt frames in or out
 
@@ -129,12 +139,6 @@ same reason — it otherwise looks identical to a detector that has stopped work
 
 <br/>
 
-> **One instance can watch several cameras**, and that's the preferred setup — each
-> instance loads its own copy of the models, and a Doovit has well under a gigabyte
-> of RAM to spare. Add every camera to **Camera Apps** on a single install rather
-> than deploying one install per camera.
-
-<br/>
 
 ## What it publishes
 
@@ -182,6 +186,30 @@ The same channel the camera app uses, so automations hook off findings the same 
 {"kind": "object_detected", "app_key": "doover_camera_1", "detected_by": "object_detection_1",
  "timestamp": "…", "rule": "Cattle in laneway", "count": 3, "objects": ["cow"]}
 ```
+
+### To tag history
+
+Every analysis writes these tags **and logs them to history** — zeros and repeats
+included, so the history has a point per analysed frame rather than one per change. A
+detector that isn't enabled leaves its tags alone, and one that failed on a frame
+records nothing for it (zeros would claim it looked).
+
+| Tag | What it holds |
+|---|---|
+| `last_analysed_at` | Epoch ms of the analysis the other figures describe |
+| `ppe_people` | People seen in the frame (whole frame) |
+| `ppe_violations` | People missing required PPE, after zones |
+| `anpr_plates` / `anpr_plates_read` | Plates seen (whole frame) / plates read, after zones |
+| `objects_count` | Objects seen that some rule asks about (whole frame) |
+| `rule_<name>` | One per object rule: how many of its objects were in its zones — recorded even below the rule's minimum count |
+| `<detector>_max_confidence` / `<detector>_mean_confidence` | Over what that detector saw, 0–1; `0` when it saw nothing |
+
+The "seen" counts are the whole frame, matching `findings`; the "after zones" ones match
+what was reported. A rule's tag name is its name slugged (`Cattle in laneway` →
+`rule_cattle_in_laneway`), so **renaming a rule starts a new series**.
+
+Running tags are kept too, for dashboards: `analysed_count`, `violation_count`,
+`last_ppe_violation` (epoch ms, same as the camera app's tag) and `last_plate`.
 
 <br/>
 
@@ -454,13 +482,20 @@ So ~2.6 s per frame with both detectors on. The general objects model **hasn't b
 a CM4 yet**. On a dev laptop, single-threaded as on the device, it took 0.14 s a frame
 against the PPE model's 0.27 s, so expect it to cost no more than the PPE model's ~1.4 s
 on a Doovit — measure before relying on that. Snapshots are minutes to hours apart, so
-latency is a non-issue; inference is serialised behind a lock anyway so several
-cameras firing at once queue rather than compete.
+latency is a non-issue.
 
-Memory, also measured on-device: 128MB with both models loaded, 204MB after the first
+Memory, also measured on-device: 128MB with PPE and ANPR loaded, 204MB after the first
 1080p analysis, **254MB peak** — and flat at 254MB from the second run through 30
-consecutive runs, so nothing accumulates. Against a Doovit's ~650MB free that leaves
-real headroom.
+consecutive runs, so nothing accumulates.
+
+**That's per install, and there's one install per camera.** A Doovit has ~650MB free, so
+three installs with everything on could peak past it — and because `mem_limit` isn't
+enforced (below), running out takes the camera apps down with it. Only enabled
+detectors load, so enable just what each camera needs: a gate camera doing plates only
+loads the plate models. The objects model's memory hasn't been measured on a CM4 yet.
+Each install also runs its models independently, so cameras that snapshot at the same
+moment (a shared schedule) compete for the same four cores. Where that's a problem, the
+cloud variant has no such limit.
 
 > The compose template's `mem_limit` is **not enforced** on current Doovits. cgroup v2
 > is mounted but the memory controller isn't enabled (`cgroup.controllers` reads

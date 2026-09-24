@@ -97,6 +97,9 @@ class Report:
     # (detector name, payload) — the payload has a `kind`; the shell adds who/when.
     events: list = field(default_factory=list)
     notifications: list = field(default_factory=list)
+    # Flat numbers for tag history: counts and confidences per detector that ran, zeros
+    # included. See each detector's `metrics`.
+    metrics: dict = field(default_factory=dict)
 
 
 def report(detectors: list[Detector], analyses: list[Analysis], camera: str) -> Report:
@@ -108,13 +111,21 @@ def report(detectors: list[Detector], analyses: list[Analysis], camera: str) -> 
     the zones that the alert's own findings fell in get a say — so one zone's setting
     can't silence, or trigger, another detector's alert.
     """
-    parts, events, notifications = [], [], []
+    parts, events, notifications, metrics = [], [], [], {}
 
     for detector in detectors:
+        results = [
+            a.results[detector.name] for a in analyses if detector.name in a.results
+        ]
+        if not results:
+            # It failed on every frame (already logged). Recording zeros would claim
+            # it looked and saw nothing.
+            continue
         pairs = [p for a in analyses for p in a.kept.get(detector.name, [])]
+        items = [item for item, _zone in pairs]
+        metrics.update(detector.metrics(results, items))
         if not pairs:
             continue
-        items = [item for item, _zone in pairs]
         zone_of = {id(item): zone for item, zone in pairs}
 
         summary = detector.summary(items)
@@ -135,7 +146,9 @@ def report(detectors: list[Detector], analyses: list[Analysis], camera: str) -> 
                     )
                 )
 
-    return Report("; ".join(parts) or "nothing detected", events, notifications)
+    return Report(
+        "; ".join(parts) or "nothing detected", events, notifications, metrics
+    )
 
 
 def zone_suffix(matched_zones) -> str:

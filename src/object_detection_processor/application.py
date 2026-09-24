@@ -29,6 +29,7 @@ from common import annotate as annotate_mod
 from common import detectors as detectors_mod
 from common import pipeline
 from common.detectors.base import SEVERITY_WARN
+from object_detection_shared.tags import ObjectDetectionTags, update_running_tags
 from pydoover.models import File, MessageCreateEvent, NotificationSeverity
 from pydoover.processor import Application
 
@@ -63,6 +64,8 @@ _DETECTORS: dict = {}
 class ObjectDetectionProcessor(Application):
     config: ObjectDetectionProcessorConfig
     config_cls = ObjectDetectionProcessorConfig
+    tags: ObjectDetectionTags
+    tags_cls = ObjectDetectionTags
 
     def _detectors(self):
         """The enabled detectors, built once per warm container."""
@@ -161,7 +164,23 @@ class ObjectDetectionProcessor(Application):
         report = pipeline.report(
             detectors, analyses, payload.get("camera_name") or channel
         )
+        await self._record_tags(report)
         await self._publish(channel, message, payload, findings, files, media, report)
+
+    async def _record_tags(self, report):
+        """This analysis's figures, logged to history; then the running tags.
+
+        Buffered and committed by pydoover at the end of the invocation. Each set asks
+        for a log, so a repeated value ("still 2 people") is recorded too.
+        """
+        await self.tags.analysed_count.set(self.tags.analysed_count.value + 1)
+        values = {
+            "last_analysed_at": int(datetime.now(tz=timezone.utc).timestamp() * 1000),
+            **report.metrics,
+        }
+        for key, value in values.items():
+            await self.tag_manager.set_tag(key, value, log=True)
+        await update_running_tags(self.tags, report.events)
 
     async def _analyse(self, attachment, detectors, name, zones=None):
         try:
